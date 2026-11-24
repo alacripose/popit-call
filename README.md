@@ -138,6 +138,48 @@ envelope admission with `secure-origin-required`.
 The standalone page is not the phone shell. It is the contact book and MCP desk. The phone
 shell remains the Springboard at `/phone.html` with its own contour surfaces.
 
+## Reach a host on another machine
+
+The static page cannot open a socket by itself. One host runs the companion as a TLS
+listener; every caller points **Bridge** at that origin and presents a signed package.
+
+```sh
+# on the Popit host
+python serve.py --host 0.0.0.0 --port 5221 \
+  --bridge http://127.0.0.1:5207 \
+  --tls-cert host-cert.pem --tls-key host-key.pem \
+  --public-origin https://alacripose.github.io
+
+# in the published page's Bridge field
+https://host.example:5221
+```
+
+Use a certificate whose SAN names the host the remote caller will type. Do not use a
+loopback certificate for a public hostname. The companion exposes only:
+
+- `POST /api/toast/call/join`
+- `POST /api/toast/call/turns`
+- `POST /api/toast/call/say`
+- `POST /api/toast/call/leave`
+- `GET /api/toast/civilians/scope`
+
+The companion refuses every other bridge route with `bridge-route`; opening calls, Debian
+commands, window control, archive reads and the raw toast state stay on loopback. CORS is
+only sent to the exact `--public-origin`; another page gets no allow-origin header. The call
+join still checks the Ed25519 package, BLAKE3 trust, 15-minute window, capability and
+single-use nonce before it creates a session.
+
+This is the remote transport, not terminal-free identity enrollment. A remote user still
+needs a caller key and a host operator who trusts its public key; remote browser audio and
+self-service enrollment are named as blocked in the civilian scope, not claimed here.
+
+## Full civilian scope
+
+The page exposes the family scope register at `/api/toast/civilians/scope` through the same
+allowlist. It names every life, memory, contract and call requirement, its evidence, and its
+blocker/research question. See [`../docs/civilians.md`](../docs/civilians.md) and
+`../civilian_scope.py`.
+
 ## Gates
 
 Run these from the Popit shell checkout:

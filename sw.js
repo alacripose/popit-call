@@ -1,5 +1,5 @@
 /* Popit Call shell cache. The bridge and every call response stay network-only. */
-const CACHE = "popit-call-v1";
+const CACHE = "popit-call-v2";
 const SHELL = [
   "./", "./index.html", "./styles.css", "./app.js", "./contour.js", "./contour.json",
   "./manifest.webmanifest", "./popit-icon-512.png",

@@ -18,6 +18,7 @@ import argparse
 import json
 import mimetypes
 import pathlib
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +26,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent
 BRIDGE = "http://127.0.0.1:5207"
+PUBLIC_ORIGIN = ""
+TLS_LISTENER = False
+# A public companion exposes only the signed call protocol. Opening a call, driving
+# Debian, moving windows or reading the archive stays on the host's loopback bridge.
+BRIDGE_ALLOW = (
+    "/api/toast/call/join",
+    "/api/toast/call/turns",
+    "/api/toast/call/say",
+    "/api/toast/call/leave",
+    "/api/toast/civilians/scope",
+)
 TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -43,7 +55,9 @@ def health() -> dict:
         "ok": True,
         "service": "popit-call-companion",
         "bridge": BRIDGE,
-        "tls": BRIDGE.startswith("https://"),
+        "tls": TLS_LISTENER or BRIDGE.startswith("https://"),
+        "public_origin": PUBLIC_ORIGIN or "same-origin",
+        "bridge_allow": list(BRIDGE_ALLOW),
         "static": str(ROOT),
     }
 
@@ -55,12 +69,21 @@ class Handler(BaseHTTPRequestHandler):
         # One line per request is enough; the page's own status carries the result.
         print(f"popit-call {self.address_string()} {format % args}", flush=True)
 
+    def _cors(self) -> None:
+        if PUBLIC_ORIGIN and self.headers.get("Origin") == PUBLIC_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", PUBLIC_ORIGIN)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Max-Age", "600")
+
     def _json(self, value: dict, status: int = 200) -> None:
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
@@ -73,6 +96,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", TYPES.get(path.suffix.lower(), "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._cors()
         self.end_headers()
         self.wfile.write(data)
 
@@ -92,6 +116,9 @@ class Handler(BaseHTTPRequestHandler):
         target_path = path[len("/api/bridge"):] or "/"
         if target_path == "/health":
             return self._json(health())
+        if target_path not in BRIDGE_ALLOW:
+            return self._json({"ok": False, "refused": {"code": "bridge-route",
+                                                         "detail": target_path}}, 403)
         target = BRIDGE.rstrip("/") + target_path
         request = urllib.request.Request(
             target, data=body, method=method,
@@ -104,6 +131,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", response.headers.get("Content-Type") or "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
+                self._cors()
                 self.end_headers()
                 self.wfile.write(data)
         except urllib.error.HTTPError as error:
@@ -111,6 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(error.code)
             self.send_header("Content-Type", error.headers.get("Content-Type") or "application/json")
             self.send_header("Content-Length", str(len(data)))
+            self._cors()
             self.end_headers()
             self.wfile.write(data)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
@@ -143,6 +172,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(size))
         self.end_headers()
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_POST(self) -> None:  # noqa: N802
         path = urllib.parse.urlsplit(self.path).path
         if not path.startswith("/api/bridge"):
@@ -157,16 +192,35 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    global BRIDGE
+    global BRIDGE, PUBLIC_ORIGIN, TLS_LISTENER
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5220)
     parser.add_argument("--bridge", default=BRIDGE)
+    parser.add_argument("--public-origin", default="",
+                        help="exact HTTPS origin of the published page, e.g. https://alacripose.github.io")
+    parser.add_argument("--tls-cert", default="", help="PEM certificate for a remote companion")
+    parser.add_argument("--tls-key", default="", help="PEM private key for a remote companion")
     args = parser.parse_args()
     BRIDGE = str(args.bridge).rstrip("/")
+    PUBLIC_ORIGIN = str(args.public_origin or "").rstrip("/")
+    if bool(args.tls_cert) != bool(args.tls_key):
+        parser.error("--tls-cert and --tls-key must be supplied together")
+    if PUBLIC_ORIGIN and not PUBLIC_ORIGIN.startswith("https://"):
+        parser.error("--public-origin must be an exact https:// origin")
+    if PUBLIC_ORIGIN and not args.tls_cert:
+        parser.error("--public-origin requires the companion's own --tls-cert/--tls-key")
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(json.dumps({"ok": True, "url": f"http://{args.host}:{args.port}/",
-                      "bridge": BRIDGE}, ensure_ascii=False), flush=True)
+    scheme = "http"
+    if args.tls_cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        TLS_LISTENER = True
+        scheme = "https"
+    print(json.dumps({"ok": True, "url": f"{scheme}://{args.host}:{args.port}/",
+                      "bridge": BRIDGE, "public_origin": PUBLIC_ORIGIN or "same-origin"},
+                     ensure_ascii=False), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

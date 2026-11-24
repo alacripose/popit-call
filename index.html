@@ -130,19 +130,25 @@ python envelope.py sign --payload caller.json --key caller.key --out signed.json
       </form>
     </section>
 
-    <section class="panel" data-contour="window" aria-labelledby="connect-title">
+    <section id="remote" class="panel" data-contour="window" aria-labelledby="connect-title">
       <div class="panel-head">
         <div>
-          <p class="eyebrow">05 · TLS</p>
-          <h2 id="connect-title">Connect the HTTPS client</h2>
+          <p class="eyebrow">05 · REMOTE LINE</p>
+          <h2 id="connect-title">Reach a host on another machine</h2>
         </div>
       </div>
-      <p class="note">The Popit host prints its LAN HTTPS URL and certificate at startup · open the certificate URL first</p>
-      <pre class="code">https://&lt;LAN-IP&gt;:5210/phone.html
-https://&lt;LAN-IP&gt;:5210/popit-cert.pem
-python serve.py --port 5220 --bridge http://127.0.0.1:5207</pre>
-      <p class="note">The companion serves this page at loopback · a phone uses the host's LAN HTTPS page instead</p>
-      <p class="note">Install the certificate as a trusted root on iOS or Android before the microphone will open</p>
+      <p class="note">The page stays static · The host runs one TLS companion · Callers enter its Bridge URL and present a signed package · No unsigned name opens a lane</p>
+      <pre class="code"># on the host that runs Popit
+python serve.py --host 0.0.0.0 --port 5221 \
+  --bridge http://127.0.0.1:5207 \
+  --tls-cert host-cert.pem --tls-key host-key.pem \
+  --public-origin https://alacripose.github.io
+
+# then in the Bridge field
+https://host.example:5221</pre>
+      <p class="note">The companion proxies only join, turns, say, leave and the civilian scope · Opening calls, Debian commands, archive reads and window control are refused with <code>bridge-route</code> · they stay on the host loopback</p>
+      <p class="note">Each remote agent or user needs a key, a signed <code>popit.call-envelope/1</code> package and a host-trusted public key · The nonce is single-use</p>
+      <p class="note">Local phone audio uses <code>https://&lt;LAN-IP&gt;:5210/phone.html</code> · Remote browser audio and terminal-free enrollment are blocked in the scope register</p>
     </section>
   </main>
 

@@ -296,14 +296,13 @@ async function bridgeFetch(path, options = {}) {
 
 async function checkBridge() {
   const pill = $("origin-state");
-  const probe = bridgeBase().endsWith("/api/bridge") ? "/health" : "/api/toast";
   try {
-    const response = await fetch(bridgePath(probe), { cache: "no-store" });
+    const response = await fetch(bridgePath("/health"), { cache: "no-store" });
     const receipt = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(receipt.refused || `http-${response.status}`);
     pill.textContent = receipt.tls ? "TLS" : "LOOPBACK";
     pill.dataset.state = "live";
-    $("bridge-state").textContent = `Companion ready · ${receipt.bridge || "bridge"}`;
+    $("bridge-state").textContent = `Companion ready · ${receipt.bridge || "bridge"} · ${receipt.public_origin || "same-origin"}`;
   } catch (error) {
     pill.textContent = "PAGE ONLY";
     pill.dataset.state = "refused";

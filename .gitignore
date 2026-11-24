@@ -1,3 +1,5 @@
+runlogs*/
+runlogs*.log
 __pycache__/
 *.py[cod]
 *.key
