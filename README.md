@@ -121,13 +121,14 @@ Popit prints these on startup:
 
 ```text
 popit phone https://<popit-lan-ip>:5210/phone.html
-popit phone https://<popit-lan-ip>:5210/popit-cert.pem
+popit phone https://<popit-lan-ip>:5210/popit-cert.cer
 popit phone http://<popit-lan-ip>:5209/phone.html
 ```
 
 On the phone:
 
-1. Open the `popit-cert.pem` URL and install it as a trusted root.
+1. Open the `popit-cert.cer` URL and install it as a trusted root. The old
+   `popit-cert.pem` URL serves the same DER certificate as an alias.
 2. On iOS, enable full trust for the certificate in **Settings → General → About → Certificate Trust Settings**.
 3. On Android, install it as a **CA certificate** under **Security → Encryption & credentials**.
 4. Open `https://<popit-lan-ip>:5210/phone.html`.
